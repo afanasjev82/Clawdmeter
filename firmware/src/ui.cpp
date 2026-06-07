@@ -3,6 +3,7 @@
 #include <lvgl.h>
 #include "logo.h"
 #include "icons.h"
+#include "idle.h"
 #include "hal/board_caps.h"
 
 // Custom fonts (scaled for 314 PPI, ~1.9x from original 165 PPI)
@@ -509,6 +510,16 @@ void ui_update(const UsageData* data) {
     last_data_ms = lv_tick_get();   // a valid usage update just landed → dot goes green
     data_received = true;
 
+    // Touchless boards (e.g. M5Stack) act as an always-on monitor: there's no
+    // tap to leave the splash and no easy way to wake a slept panel. So on
+    // incoming data, surface the usage view and keep the panel awake — the
+    // display becomes hands-off after any reboot. Touch boards keep the manual
+    // splash-on-boot behavior.
+    if (!board_caps().has_touch) {
+        idle_note_activity();
+        if (current_screen == SCREEN_SPLASH) ui_show_screen(SCREEN_USAGE);
+    }
+
     int s_pct = (int)(data->session_pct + 0.5f);
 
     lv_label_set_text_fmt(lbl_session_pct, "%d%%", s_pct);
@@ -528,19 +539,26 @@ void ui_update(const UsageData* data) {
     lv_label_set_text(lbl_weekly_reset, buf);
 }
 
-// Pick the usage-view sub-screen: pairing hint (BLE down), the idle "Zzz" screen
-// (connected but data has gone stale), or the live usage panels. Only re-lays-out
-// on an actual change. The animated status line stays visible everywhere — it
-// reads "Listening…" on the idle screen, keeping it alive rather than frozen.
+// True when a usage update arrived recently, via ANY transport (BLE or USB
+// serial). The view/status logic keys off this rather than the BLE link so the
+// serial transport (no BLE connection) still shows live data.
+static bool data_is_fresh(void) {
+    return data_received && (lv_tick_get() - last_data_ms) < DATA_FRESH_MS;
+}
+
+// Pick the usage-view sub-screen: live usage panels when data is flowing, the
+// pairing hint when nothing is connected and no data, or the idle "Zzz" screen
+// when a BLE host is connected but data has gone stale. Only re-lays-out on an
+// actual change. The animated status line stays visible everywhere.
 static void update_view_state(void) {
     if (!usage_group || !pair_group || !idle_group) return;
     int v;
-    if (!s_ble_connected) {
-        v = 0;  // pairing hint
-    } else if (data_received && (lv_tick_get() - last_data_ms) < DATA_FRESH_MS) {
-        v = 2;  // live usage
+    if (data_is_fresh()) {
+        v = 2;  // live usage — data is flowing (BLE or USB serial)
+    } else if (!s_ble_connected) {
+        v = 0;  // pairing hint — no transport up and no fresh data
     } else {
-        v = 1;  // idle / Zzz
+        v = 1;  // idle / Zzz — BLE connected but data stale
     }
     if (v == view_state) return;
     view_state = v;
@@ -571,8 +589,8 @@ void ui_tick_anim(void) {
 
     // Status text by priority. Whimsical messages only when connected & settled.
     const char* text;
-    if (!s_ble_connected) {
-        text = "Waiting";              // advertising / waiting for a host connection
+    if (!s_ble_connected && !data_is_fresh()) {
+        text = "Waiting";              // no transport up / waiting for data
     } else if (view_state == 1) {      // idle — alternate so it reads as alive AND data-less
         text = (anim_msg_idx & 1) ? "No data" : "Listening";
     } else if (now - connected_at_ms < 5000) {
