@@ -36,7 +36,11 @@ struct Layout {
     int16_t usage_reset_y;
     int16_t panel_pad_v;        // panel inner vertical padding
     int16_t panel_pad_h;        // panel inner horizontal padding
-    bool    show_logo;          // 80px logo is hidden on short screens
+    bool    show_logo;          // draw the Clawdmeter logo in the header
+    int16_t logo_scale;         // 256 = native 80px; scaled down for short headers
+    int16_t battery_scale;      // 256 = native 48px; scaled down for short headers
+    bool    header_inline;      // title sits right of the logo (compact row) vs centered
+    bool    static_battery;     // show a fixed full-battery glyph (no readable gauge)
     const lv_font_t* title_font;
     const lv_font_t* usage_pct_font;
     const lv_font_t* usage_pill_font;
@@ -64,6 +68,10 @@ static void compute_layout(const BoardCaps& c) {
     L.margin = 20;
     L.title_y = 30;
     L.show_logo = true;
+    L.logo_scale = 256;
+    L.battery_scale = 256;
+    L.header_inline = false;
+    L.static_battery = false;
     L.panel_pad_v = 12;
     L.panel_pad_h = 16;
     L.usage_bar_h = 24;
@@ -109,10 +117,15 @@ static void compute_layout(const BoardCaps& c) {
     } else {
         // Small landscape — tuned for 320x240 (M5Stack Core). No touch, so the
         // entire view must fit at once: title + two stacked panels + status line
-        // inside 240px tall. Smaller fonts, tighter panels, logo hidden.
+        // inside 240px tall. Smaller fonts, tighter panels, and a compact header
+        // row: logo + "Usage" + a scaled (static) battery glyph, all ~26px tall.
         L.margin = 12;
         L.title_y = 2;
-        L.show_logo = false;
+        L.show_logo = true;
+        L.logo_scale = 83;          // 80px -> ~26px
+        L.battery_scale = 138;      // 48px -> ~26px
+        L.header_inline = true;     // "Usage" sits right of the logo
+        L.static_battery = true;    // non-I2C IP5306: no real level, show a fixed glyph
         L.panel_pad_v = 6;
         L.panel_pad_h = 12;
         L.content_y = 36;
@@ -419,7 +432,12 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_label_set_text(lbl_title, "Usage");
     lv_obj_set_style_text_font(lbl_title, L.title_font, 0);
     lv_obj_set_style_text_color(lbl_title, COL_TEXT, 0);
-    lv_obj_align(lbl_title, LV_ALIGN_TOP_MID, L.show_logo ? 16 : 0, L.title_y);
+    if (L.header_inline) {
+        int logo_w = LOGO_WIDTH * L.logo_scale / 256;
+        lv_obj_align(lbl_title, LV_ALIGN_TOP_LEFT, L.margin + logo_w + 6, L.title_y);
+    } else {
+        lv_obj_align(lbl_title, LV_ALIGN_TOP_MID, L.show_logo ? 16 : 0, L.title_y);
+    }
 
     // Usage panels (shown when connected) live in a transparent full-size group
     // so they can be toggled against the pairing hint as one unit.
@@ -472,12 +490,17 @@ void ui_init(void) {
 
     logo_img = lv_image_create(scr);
     lv_image_set_src(logo_img, &logo_dsc);
-    lv_obj_set_pos(logo_img, L.margin, L.title_y - 10);
+    lv_image_set_pivot(logo_img, 0, 0);             // scale toward top-left corner
+    lv_image_set_scale(logo_img, L.logo_scale);
+    lv_obj_set_pos(logo_img, L.margin, L.header_inline ? L.title_y : (L.title_y - 10));
     if (!L.show_logo) lv_obj_add_flag(logo_img, LV_OBJ_FLAG_HIDDEN);
 
     battery_img = lv_image_create(scr);
-    lv_image_set_src(battery_img, &battery_dscs[0]);
-    lv_obj_set_pos(battery_img, L.scr_w - 48 - L.margin, L.title_y);
+    lv_image_set_src(battery_img, L.static_battery ? &battery_dscs[3] : &battery_dscs[0]);
+    lv_image_set_pivot(battery_img, 0, 0);
+    lv_image_set_scale(battery_img, L.battery_scale);
+    int batt_w = ICON_BATTERY_W * L.battery_scale / 256;
+    lv_obj_set_pos(battery_img, L.scr_w - batt_w - L.margin, L.title_y);
 
 }
 
@@ -568,7 +591,7 @@ void ui_tick_anim(void) {
 static screen_t prev_non_splash_screen = SCREEN_USAGE;
 static void apply_battery_visibility(void) {
     if (!battery_img) return;
-    if (current_screen == SCREEN_SPLASH || !board_caps().has_battery)
+    if (current_screen == SCREEN_SPLASH || (!board_caps().has_battery && !L.static_battery))
         lv_obj_add_flag(battery_img, LV_OBJ_FLAG_HIDDEN);
     else
         lv_obj_clear_flag(battery_img, LV_OBJ_FLAG_HIDDEN);
@@ -620,6 +643,8 @@ void ui_update_ble_status(ble_state_t state, const char* name, const char* mac) 
 }
 
 void ui_update_battery(int percent, bool charging) {
+    // Boards with no readable gauge keep the fixed glyph set at init.
+    if (L.static_battery) { apply_battery_visibility(); return; }
     int idx;
     if (charging) {
         idx = 4;
