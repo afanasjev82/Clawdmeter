@@ -391,7 +391,7 @@ static void build_pair_group(lv_obj_t* parent) {
     lv_label_set_text(l3, "for 3 seconds, then release");
     lv_obj_set_style_text_font(l3, L.bt_device_font, 0);
     lv_obj_set_style_text_color(l3, COL_DIM, 0);
-    lv_obj_align(l3, LV_ALIGN_TOP_MID, 0, 160);
+    lv_obj_align(l3, LV_ALIGN_TOP_MID, 0, 140);
 
     lv_obj_add_flag(pair_group, LV_OBJ_FLAG_HIDDEN);  // ui_update_ble_status decides
 }
