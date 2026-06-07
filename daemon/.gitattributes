@@ -1,0 +1,8 @@
+# Keep line endings correct per-platform regardless of anyone's core.autocrlf.
+# Shell scripts must stay LF (a CRLF shebang breaks them on Linux); Windows
+# batch files want CRLF for reliable label/goto handling.
+*.sh        text eol=lf
+*.bat       text eol=crlf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.py        text eol=lf
