@@ -116,7 +116,7 @@ static bool parse_json(const char* json, UsageData* out) {
 }
 
 // ---- Serial command buffer ----
-#define CMD_BUF_SIZE 64
+#define CMD_BUF_SIZE 256   // must hold a full usage JSON line (USB-serial transport)
 static char cmd_buf[CMD_BUF_SIZE];
 static int cmd_pos = 0;
 
@@ -158,12 +158,29 @@ static void send_screenshot() {
 #endif
 }
 
+// Apply a usage JSON payload to the UI. Shared by the BLE and USB-serial data
+// paths so both render identically. Returns true on a successful parse.
+static bool apply_usage(const char* json) {
+    if (!parse_json(json, &usage)) return false;
+    int g_before = usage_rate_group();
+    usage_rate_sample(usage.session_pct);
+    int g_after = usage_rate_group();
+    if (g_after != g_before && splash_is_active()) splash_pick_for_current_rate();
+    ui_update(&usage);
+    return true;
+}
+
 static void check_serial_cmd() {
     while (Serial.available()) {
         char c = Serial.read();
         if (c == '\n' || c == '\r') {
             cmd_buf[cmd_pos] = '\0';
-            if (strcmp(cmd_buf, "screenshot") == 0) send_screenshot();
+            // A line starting with '{' is a usage payload (USB-serial transport,
+            // a no-Bluetooth fallback). Otherwise it's a text command.
+            if (cmd_buf[0] == '{')
+                Serial.println(apply_usage(cmd_buf) ? "ACK" : "NACK");
+            else if (strcmp(cmd_buf, "screenshot") == 0)
+                send_screenshot();
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {
             cmd_buf[cmd_pos++] = c;
@@ -366,20 +383,8 @@ void loop() {
     check_serial_cmd();
 
     if (ble_has_data()) {
-        if (parse_json(ble_get_data(), &usage)) {
-            int g_before = usage_rate_group();
-            usage_rate_sample(usage.session_pct);
-            int g_after = usage_rate_group();
-            if (g_after != g_before) {
-                Serial.printf("usage rate: group %d -> %d (s=%.2f%%)\n",
-                    g_before, g_after, usage.session_pct);
-                if (splash_is_active()) splash_pick_for_current_rate();
-            }
-            ui_update(&usage);
-            ble_send_ack();
-        } else {
-            ble_send_nack();
-        }
+        if (apply_usage(ble_get_data())) ble_send_ack();
+        else                             ble_send_nack();
     }
 
     delay(5);
