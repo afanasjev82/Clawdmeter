@@ -1,0 +1,37 @@
+# Clawdmeter BLE daemon — Docker Compose wrapper.
+#
+# IMPORTANT: Bluetooth LE in a container only works on a NATIVE LINUX HOST.
+# It needs the host's networking + the host's BlueZ stack reached over the
+# system D-Bus socket. On Docker Desktop (Windows/macOS) the engine runs in a
+# VM with no access to the host Bluetooth radio, so the daemon will scan
+# forever and never connect. Deploy this on your Ubuntu box.
+
+services:
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: clawdmeter-daemon:latest
+    container_name: clawdmeter-daemon
+    restart: unless-stopped
+
+    # BLE: share the host network namespace and talk to host BlueZ via D-Bus.
+    network_mode: host
+
+    volumes:
+      # Host BlueZ (the host's bluetooth.service must be running).
+      - /var/run/dbus:/var/run/dbus:ro
+      # Claude OAuth token, read-only. Mount the DIRECTORY (not the file) so a
+      # `claude login` token refresh — which replaces the file's inode — is
+      # visible to the container without recreating it.
+      - ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}:/root/.claude:ro
+      # Persist the resolved BLE MAC cache across restarts (optional).
+      - clawd-config:/root/.config
+
+    # BlueZ scanning over the mounted D-Bus socket normally works without extra
+    # privileges. If your distro's D-Bus policy blocks the container from
+    # talking to org.bluez, uncomment the next line.
+    # privileged: true
+
+volumes:
+  clawd-config:

@@ -1,0 +1,3 @@
+# Runtime deps for the containerized Linux daemon (claude_usage_daemon.py).
+bleak>=0.22
+httpx>=0.27
