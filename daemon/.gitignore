@@ -1,6 +1,9 @@
 # Local runtime env (created from .env.example; may contain host paths). Never commit.
 .env
 
+# Seed credentials — your OAuth token. NEVER commit.
+secrets/
+
 # Python bytecode
 __pycache__/
 *.pyc
