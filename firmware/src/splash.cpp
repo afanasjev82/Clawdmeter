@@ -177,15 +177,31 @@ void splash_init(lv_obj_t *parent) {
     if (cell > MAX_CELL_NO_PSRAM) cell = MAX_CELL_NO_PSRAM;
 #endif
 
-    canvas_w = GRID * cell;
-    canvas_h = GRID * cell;
-
-    canvas_buf = (uint16_t*)heap_caps_malloc(canvas_w * canvas_h * 2, canvas_caps);
-    row_buf    = (uint16_t*)heap_caps_malloc(canvas_w * 2,             canvas_caps);
+    // Shrink-to-fit: the nominal size above assumes a contiguous block is
+    // available, but a fragmented internal heap (e.g. the original ESP32 after
+    // NimBLE comes up) may have a largest-free-block well below the cap. Retry
+    // with a smaller cell until both the canvas and its scratch row allocate,
+    // rather than hard-failing into a blank screen. The canvas is centered, so
+    // a smaller buffer just means more black border around the pixel art.
+    canvas_buf = nullptr;
+    row_buf    = nullptr;
+    while (cell >= 4) {
+        canvas_w = GRID * cell;
+        canvas_h = GRID * cell;
+        canvas_buf = (uint16_t*)heap_caps_malloc(canvas_w * canvas_h * 2, canvas_caps);
+        row_buf    = (uint16_t*)heap_caps_malloc(canvas_w * 2,             canvas_caps);
+        if (canvas_buf && row_buf) break;
+        if (canvas_buf) { heap_caps_free(canvas_buf); canvas_buf = nullptr; }
+        if (row_buf)    { heap_caps_free(row_buf);    row_buf    = nullptr; }
+        cell -= 2;
+    }
     if (!canvas_buf || !row_buf) {
         Serial.println("splash: failed to alloc canvas buffer");
         return;
     }
+    Serial.printf("splash: canvas %dx%d (cell=%d), largest free block=%u\n",
+        canvas_w, canvas_h, cell,
+        (unsigned)heap_caps_get_largest_free_block(canvas_caps));
 
     splash_container = lv_obj_create(parent);
     lv_obj_set_size(splash_container, c.width, c.height);
