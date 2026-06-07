@@ -35,15 +35,29 @@ That file is git-ignored. The refresher seeds an internal volume from it on
 first run, then self-maintains the token — you don't need to touch it again
 unless the refresh token itself is ever revoked.
 
+## Transports
+
+Two ways to reach the device — pick one with `-t`:
+
+| Transport | Flag | Needs | When |
+|---|---|---|---|
+| Bluetooth LE | `-t ble` (default) | a host BT adapter + BlueZ | normal wireless operation |
+| USB serial | `-t usb` | the device's USB cable plugged into the host | no BT adapter, or a wired setup |
+
+The USB path sends the same usage JSON down the device's serial line (`/dev/ttyUSB0`);
+the firmware renders it identically. No Bluetooth, D-Bus, or host networking involved.
+Note: opening the serial port resets the device once on daemon start (then it stays up).
+
 ## Usage
 
 ```bash
 cd daemon
-./start.sh -d            # build + run detached (24/7)
-docker compose logs -f   # watch both services
-./stop.sh                # stop (keeps the refreshed-token volume)
-./stop.sh --rmi          # stop + remove the image
-./stop.sh -v             # stop + wipe volumes (re-seeds from secrets next start)
+./start.sh -d                 # BLE (default), detached
+./start.sh -t usb -d          # USB serial, detached
+docker compose logs -f        # watch the services
+./stop.sh                     # stop (keeps the refreshed-token volume)
+./stop.sh --rmi               # stop + remove the image
+./stop.sh -v                  # stop + wipe volumes (re-seeds from secrets next start)
 ```
 
 Healthy logs look like:

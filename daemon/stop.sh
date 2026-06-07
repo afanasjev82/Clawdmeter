@@ -34,6 +34,8 @@ done
 
 COMPOSE_ARGS=()
 [ -f "$ENV_FILE" ] && COMPOSE_ARGS+=(--env-file "$ENV_FILE")
+# Activate both transport profiles so `down` tears down whichever is running.
+COMPOSE_ARGS+=(--profile ble --profile usb)
 
 DOWN=(down --remove-orphans)
 [ "$REMOVE_IMAGE" = true ]   && DOWN+=(--rmi local)

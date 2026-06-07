@@ -1,3 +1,4 @@
-# Runtime deps for the containerized Linux daemon (claude_usage_daemon.py).
-bleak>=0.22
-httpx>=0.27
+# Runtime deps for the containerized Linux daemon.
+bleak>=0.22       # BLE transport (claude_usage_daemon.py)
+httpx>=0.27       # Anthropic API + OAuth refresh
+pyserial>=3.5     # USB-serial transport fallback (claude_usage_daemon_serial.py)

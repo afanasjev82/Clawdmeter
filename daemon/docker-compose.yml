@@ -1,19 +1,18 @@
 # Clawdmeter — full Docker (Compose) deployment for a Linux host.
 #
-# Two services share one token volume:
-#   token-refresher : keeps the OAuth access token fresh (the daemon never does)
-#   daemon          : scans for the device over BLE and pushes usage to it
+# token-refresher : keeps the OAuth access token fresh (always runs)
+# daemon          : BLE transport      — profile "ble"  (needs a host BT adapter)
+# daemon-serial   : USB-serial transport — profile "usb" (no Bluetooth needed)
 #
-# REQUIRES A NATIVE LINUX HOST. Bluetooth LE needs the host's networking and the
-# host's BlueZ stack reached over the system D-Bus socket. Docker Desktop
-# (Windows/macOS) runs in a VM with no access to the Bluetooth radio.
+# Pick a transport with the profile:
+#   docker compose --profile ble up -d     # over Bluetooth LE
+#   docker compose --profile usb up -d     # over the device's USB cable
+# (start.sh -t ble|usb wraps this.)
 #
-# One-time setup: copy your Claude credentials to ./secrets/.credentials.json
-# (from a machine where you've run `claude login`). The refresher seeds the
-# volume from it on first run, then self-maintains the token — Claude Code does
-# NOT need to be installed on this host.
+# One-time setup: copy your Claude credentials to ./secrets/.credentials.json.
+# The refresher seeds an internal volume from it, then self-maintains the token.
 
-# Shared build definition for both services (one image, two commands).
+# Shared build definition (one image, different commands per service).
 x-image: &image
   build:
     context: .
@@ -32,36 +31,55 @@ services:
       REFRESH_CHECK_INTERVAL: ${REFRESH_CHECK_INTERVAL:-600}
       REFRESH_MARGIN: ${REFRESH_MARGIN:-1800}
       REFRESH_ON_START: ${REFRESH_ON_START:-true}
-      # Override only if upstream OAuth details change:
       CLAUDE_OAUTH_TOKEN_URL: ${CLAUDE_OAUTH_TOKEN_URL:-https://console.anthropic.com/v1/oauth/token}
       CLAUDE_OAUTH_CLIENT_ID: ${CLAUDE_OAUTH_CLIENT_ID:-9d1c250a-e61b-44d9-88ed-5944d1962f5e}
     volumes:
       - clawd-token:/root/.claude
       - ${CLAUDE_CREDENTIALS_FILE:-./secrets/.credentials.json}:/seed/.credentials.json:ro
     healthcheck:
-      # Daemon waits for this: token must be seeded before it starts polling.
       test: ["CMD", "test", "-f", "/root/.claude/.credentials.json"]
       interval: 10s
       timeout: 3s
       retries: 12
       start_period: 5s
 
+  # ---- Transport A: Bluetooth LE (needs a host BT adapter + BlueZ) ----
   daemon:
     <<: *image
     container_name: clawdmeter-daemon
     restart: unless-stopped
+    profiles: ["ble"]
     depends_on:
       token-refresher:
         condition: service_healthy
-    # BLE: share the host network namespace and talk to host BlueZ via D-Bus.
     network_mode: host
+    # The container must reach the host's BlueZ over D-Bus; the host AppArmor
+    # profile otherwise denies it (org.freedesktop.DBus.Error.AccessDenied).
+    security_opt:
+      - apparmor=unconfined
     volumes:
-      - /var/run/dbus:/var/run/dbus:ro          # host BlueZ (bluetooth.service must run)
-      - clawd-token:/root/.claude:ro            # token (read-only; refresher owns it)
-      - clawd-config:/root/.config              # resolved BLE MAC cache
-    # BlueZ scanning over the mounted D-Bus socket normally works unprivileged.
-    # Uncomment if your distro's D-Bus policy blocks the container from org.bluez.
-    # privileged: true
+      - /var/run/dbus:/var/run/dbus:ro
+      - clawd-token:/root/.claude:ro
+      - clawd-config:/root/.config
+    # If BlueZ access is still blocked on your distro, also try: privileged: true
+
+  # ---- Transport B: USB serial (no Bluetooth) ----
+  daemon-serial:
+    <<: *image
+    container_name: clawdmeter-daemon-serial
+    restart: unless-stopped
+    profiles: ["usb"]
+    command: ["python", "claude_usage_daemon_serial.py"]
+    depends_on:
+      token-refresher:
+        condition: service_healthy
+    environment:
+      SERIAL_PORT: ${SERIAL_PORT:-/dev/ttyUSB0}
+      SERIAL_BAUD: ${SERIAL_BAUD:-115200}
+    devices:
+      - ${SERIAL_PORT:-/dev/ttyUSB0}:${SERIAL_PORT:-/dev/ttyUSB0}
+    volumes:
+      - clawd-token:/root/.claude:ro
 
 volumes:
   clawd-token:
