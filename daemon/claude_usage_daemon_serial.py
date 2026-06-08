@@ -23,6 +23,11 @@ from claude_usage_daemon import read_token, poll_api, log, POLL_INTERVAL
 SERIAL_PORT = os.environ.get("SERIAL_PORT", "/dev/ttyUSB0")
 SERIAL_BAUD = int(os.environ.get("SERIAL_BAUD", "115200"))
 
+# Optional: push the screen auto-sleep timeout to the firmware on connect.
+# Unset/blank → leave the firmware's saved value. Integer seconds; 0 = never.
+_sleep_env = os.environ.get("SCREEN_SLEEP_SECONDS", "").strip()
+SCREEN_SLEEP_SECONDS = int(_sleep_env) if _sleep_env.isdigit() else None
+
 
 def open_serial() -> serial.Serial:
     """Open the port without asserting DTR/RTS, so we don't reset the ESP32 on
@@ -47,6 +52,10 @@ async def main() -> None:
                 ser = open_serial()
                 log(f"Opened {SERIAL_PORT} @ {SERIAL_BAUD}")
                 time.sleep(2)  # let the device finish any reset-on-open boot
+                if SCREEN_SLEEP_SECONDS is not None:
+                    ser.write(f"sleep {SCREEN_SLEEP_SECONDS}\n".encode())
+                    ser.flush()
+                    log(f"Set screen sleep: {SCREEN_SLEEP_SECONDS}s")
             token = read_token()
             if not token:
                 log("No token; skipping poll")
