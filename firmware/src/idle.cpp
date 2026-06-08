@@ -18,6 +18,7 @@ static uint32_t fade_last_step_ms = 0;
 static uint8_t  fade_from = DISPLAY_DEFAULT_BRIGHTNESS;
 static uint8_t  fade_to   = 0;
 static uint8_t  awake_brightness = DISPLAY_DEFAULT_BRIGHTNESS;  // user-set "full" level (brightness.cpp)
+static uint32_t timeout_ms = IDLE_TIMEOUT_MS;   // runtime; sleep_cfg overrides
 
 static void apply_brightness(uint8_t b) {
     display_hal_set_brightness(b);
@@ -42,6 +43,18 @@ void idle_set_awake_brightness(uint8_t level) {
     // during fades/sleep the next fade-in picks it up.
     if (state == STATE_AWAKE) apply_brightness(level);
 }
+
+void idle_set_timeout(uint32_t ms) {
+    timeout_ms = ms;
+    // Disabling sleep while the panel is dark/fading-out should wake it.
+    if (ms == 0 && (state == STATE_ASLEEP || state == STATE_FADING_OUT)) {
+        last_activity_ms = millis();
+        begin_fade(awake_brightness, last_activity_ms);
+        state = STATE_FADING_IN;
+    }
+}
+
+uint32_t idle_get_timeout(void) { return timeout_ms; }
 
 void idle_note_activity(void) {
     last_activity_ms = millis();
@@ -90,7 +103,7 @@ void idle_tick(void) {
 
     switch (state) {
     case STATE_AWAKE:
-        if (now - last_activity_ms >= IDLE_TIMEOUT_MS) {
+        if (timeout_ms != 0 && now - last_activity_ms >= timeout_ms) {
             begin_fade(0, now);
             state = STATE_FADING_OUT;
         }

@@ -4,6 +4,10 @@
 // All tunables live here so nothing is hard-coded in main.cpp / idle.cpp.
 
 #define IDLE_TIMEOUT_MS             (30UL * 60UL * 1000UL)  // 30 min
+
+// Bounds for the runtime-configurable timeout (seconds). 0 = never sleep.
+#define IDLE_TIMEOUT_MIN_S          5
+#define IDLE_TIMEOUT_MAX_S          86400UL   // 24 h
 #define IDLE_FADE_OUT_MS            400      // fade-to-black duration
 #define IDLE_FADE_IN_MS             180      // wake fade-in (snappier)
 #define IDLE_FADE_STEP_MS           20       // tick interval per fade step

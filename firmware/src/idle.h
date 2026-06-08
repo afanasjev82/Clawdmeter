@@ -11,6 +11,11 @@ void idle_note_activity(void);
 // picked up by the next fade-in. See brightness.{h,cpp}.
 void idle_set_awake_brightness(uint8_t level);
 
+// Runtime auto-sleep timeout. ms == 0 disables sleep (always-on); setting 0
+// while the panel is dark wakes it. Persisted by sleep_cfg.{h,cpp}.
+void     idle_set_timeout(uint32_t ms);
+uint32_t idle_get_timeout(void);
+
 // Returns true if this press was consumed as a wake-up (caller MUST skip the
 // button's normal action). Returns false when already awake — also notes the
 // activity, so callers don't need a separate idle_note_activity() call.
