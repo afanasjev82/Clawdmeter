@@ -74,11 +74,15 @@ services:
       token-refresher:
         condition: service_healthy
     environment:
-      SERIAL_PORT: ${SERIAL_PORT:-/dev/ttyUSB0}
+      SERIAL_PORT: /dev/ttyUSB0          # fixed path INSIDE the container
       SERIAL_BAUD: ${SERIAL_BAUD:-115200}
       SCREEN_SLEEP_SECONDS: ${SCREEN_SLEEP_SECONDS:-}
     devices:
-      - ${SERIAL_PORT:-/dev/ttyUSB0}:${SERIAL_PORT:-/dev/ttyUSB0}
+      # Map a HOST device node to a fixed /dev/ttyUSB0 inside the container.
+      # Set SERIAL_PORT_HOST in .env to the stable by-id symlink
+      # (/dev/serial/by-id/usb-Silicon_Labs_CP2104_..._<serial>-if00-port0) so the
+      # kernel renumbering ttyUSB0->ttyUSB1 on replug/reboot doesn't break it.
+      - ${SERIAL_PORT_HOST:-/dev/ttyUSB0}:/dev/ttyUSB0
     volumes:
       - clawd-token:/root/.claude:ro
 
