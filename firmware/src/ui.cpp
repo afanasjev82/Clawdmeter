@@ -516,7 +516,9 @@ void ui_update(const UsageData* data) {
     // display becomes hands-off after any reboot. Touch boards keep the manual
     // splash-on-boot behavior.
     if (!board_caps().has_touch) {
-        idle_note_activity();
+        // Surface usage on first data so the display is hands-off after a
+        // reboot, but do NOT treat data as activity — the panel sleeps on the
+        // idle timer regardless of data flow (classic screensaver).
         if (current_screen == SCREEN_SPLASH) ui_show_screen(SCREEN_USAGE);
     }
 
