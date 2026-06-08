@@ -12,6 +12,7 @@
 #include "idle.h"
 #include "idle_cfg.h"
 #include "brightness.h"
+#include "sleep_cfg.h"
 
 #include "hal/board_caps.h"
 #include "hal/display_hal.h"
@@ -170,6 +171,26 @@ static bool apply_usage(const char* json) {
     return true;
 }
 
+// Handle a "sleep" serial command. `arg` points just past "sleep".
+//   "sleep"        → query: prints "sleep=<n>" or "sleep=off"
+//   "sleep <n>"    → set timeout to n seconds (0 = never sleep)
+static void handle_sleep_cmd(const char* arg) {
+    while (*arg == ' ') arg++;
+    if (*arg == '\0') {                         // query
+        uint32_t s = sleep_cfg_get();
+        if (s) Serial.printf("sleep=%lu\n", (unsigned long)s);
+        else   Serial.println("sleep=off");
+        return;
+    }
+    char* end = nullptr;
+    long val = strtol(arg, &end, 10);
+    if (end == arg || val < 0) { Serial.println("ERR sleep"); return; }
+    sleep_cfg_set((uint32_t)val);
+    uint32_t s = sleep_cfg_get();
+    if (s) Serial.printf("OK sleep=%lu\n", (unsigned long)s);
+    else   Serial.println("OK sleep=off");
+}
+
 static void check_serial_cmd() {
     while (Serial.available()) {
         char c = Serial.read();
@@ -179,6 +200,8 @@ static void check_serial_cmd() {
             // a no-Bluetooth fallback). Otherwise it's a text command.
             if (cmd_buf[0] == '{')
                 Serial.println(apply_usage(cmd_buf) ? "ACK" : "NACK");
+            else if (strncmp(cmd_buf, "sleep", 5) == 0)
+                handle_sleep_cmd(cmd_buf + 5);
             else if (strcmp(cmd_buf, "screenshot") == 0)
                 send_screenshot();
             cmd_pos = 0;
@@ -205,6 +228,7 @@ void setup() {
     display_hal_begin();
     idle_init();        // takes over panel brightness and starts the idle timer
     brightness_init();  // load the user's saved brightness level and apply via idle
+    sleep_cfg_init();   // load saved auto-sleep timeout and apply to idle
 
     power_hal_init();
     imu_hal_init();
