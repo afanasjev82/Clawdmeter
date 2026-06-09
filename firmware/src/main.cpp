@@ -3,6 +3,7 @@
 #include <lvgl.h>
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 
 #include "data.h"
 #include "ui.h"
@@ -220,6 +221,24 @@ extern "C" void board_init(void);
 void setup() {
     Serial.begin(115200);
     delay(300);
+
+    // Log the reset reason so we can distinguish a firmware crash from a
+    // clean power-on or daemon restart. Visible in serial terminal / daemon logs.
+    const char* reset_reason = "unknown";
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:   reset_reason = "power-on"; break;
+        case ESP_RST_EXT:       reset_reason = "external"; break;
+        case ESP_RST_SW:        reset_reason = "software"; break;
+        case ESP_RST_PANIC:     reset_reason = "PANIC"; break;
+        case ESP_RST_INT_WDT:   reset_reason = "INT_WDT"; break;
+        case ESP_RST_TASK_WDT:  reset_reason = "TASK_WDT"; break;
+        case ESP_RST_WDT:       reset_reason = "WDT"; break;
+        case ESP_RST_DEEPSLEEP: reset_reason = "deep-sleep"; break;
+        case ESP_RST_BROWNOUT:  reset_reason = "BROWNOUT"; break;
+        case ESP_RST_SDIO:      reset_reason = "sdio"; break;
+        default: break;
+    }
+    Serial.printf("[boot] reset_reason=%s\n", reset_reason);
     Serial.println("{\"ready\":true}");
 
     board_init();

@@ -69,6 +69,8 @@ void idle_note_activity(void) {
 bool idle_consume_wake_press(void) {
     if (state == STATE_ASLEEP || state == STATE_FADING_OUT) {
         uint32_t now = millis();
+        Serial.printf("[idle] wake from %s at %lums\n",
+            state == STATE_ASLEEP ? "ASLEEP" : "FADING_OUT", (unsigned long)now);
         last_activity_ms = now;
         begin_fade(awake_brightness, now);
         state = STATE_FADING_IN;

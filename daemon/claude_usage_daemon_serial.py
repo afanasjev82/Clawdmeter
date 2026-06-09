@@ -14,6 +14,7 @@ import asyncio
 import json
 import os
 import sys
+import threading
 import time
 
 import serial  # pyserial
@@ -42,6 +43,20 @@ def open_serial() -> serial.Serial:
     return ser
 
 
+def _serial_reader(ser: serial.Serial) -> None:
+    """Background thread: log every line the firmware prints to serial.
+    Surfaces [boot] reset_reason, [idle] wake, ACK/NACK, and any crash output."""
+    while ser.is_open:
+        try:
+            line = ser.readline()
+            if line:
+                text = line.decode(errors="replace").rstrip()
+                if text:
+                    log(f"[dev] {text}")
+        except Exception:
+            break
+
+
 async def main() -> None:
     log(f"=== Claude Usage Tracker Daemon (USB serial {SERIAL_PORT}) ===")
     log(f"Poll interval: {POLL_INTERVAL}s")
@@ -51,6 +66,8 @@ async def main() -> None:
             if ser is None or not ser.is_open:
                 ser = open_serial()
                 log(f"Opened {SERIAL_PORT} @ {SERIAL_BAUD}")
+                threading.Thread(target=_serial_reader, args=(ser,),
+                                 daemon=True, name="serial-reader").start()
                 time.sleep(2)  # let the device finish any reset-on-open boot
                 if SCREEN_SLEEP_SECONDS is not None:
                     ser.write(f"sleep {SCREEN_SLEEP_SECONDS}\n".encode())
