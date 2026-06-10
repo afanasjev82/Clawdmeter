@@ -45,8 +45,8 @@ void power_hal_tick(void) {
         long_flag    = true;              // crossed the long-press threshold
         long_emitted = true;
     } else if (!pressed && btn_was) {     // release edge
-        if (long_emitted) released_flag = true;   // long hold -> pair gesture
-        else              short_flag    = true;   // quick tap  -> cycle
+        if (long_emitted) released_flag = true;          // long hold -> pair gesture
+        else if (now - press_start >= 50) short_flag = true;  // quick tap, but not noise (<50ms)
     }
     btn_was = pressed;
 }
