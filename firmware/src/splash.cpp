@@ -300,8 +300,6 @@ void splash_pick_for_current_rate(void) {
     render_frame(a->frames[0], a->palette);
 }
 
-bool splash_is_active(void) { return active; }
-
 void splash_show(void) {
     last_rate_group = usage_rate_group();  // sync so splash_tick() doesn't immediately repick
     splash_pick_for_current_rate();
