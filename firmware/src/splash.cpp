@@ -30,6 +30,7 @@ static uint16_t cur_frame = 0;
 static uint32_t frame_started_ms = 0;
 static uint32_t last_pick_ms = 0;
 static bool active = false;
+static int  last_rate_group = -1;  // synced in splash_show(); detects group changes in splash_tick()
 
 // While splash is showing, auto-cycle to the next animation in the current
 // rate-driven group every this many ms.
@@ -244,6 +245,15 @@ void splash_init(lv_obj_t *parent) {
 void splash_tick(void) {
     if (!active || SPLASH_ANIM_COUNT == 0) return;
 
+    // Immediately switch to a group-appropriate animation when usage rate changes.
+    // Decouples apply_usage() from needing to know about the splash screen.
+    int g = usage_rate_group();
+    if (g != last_rate_group) {
+        last_rate_group = g;
+        splash_pick_for_current_rate();
+        return;
+    }
+
     // Auto-rotate to the next animation in the current group.
     if (millis() - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) {
         splash_pick_for_current_rate();
@@ -293,6 +303,7 @@ void splash_pick_for_current_rate(void) {
 bool splash_is_active(void) { return active; }
 
 void splash_show(void) {
+    last_rate_group = usage_rate_group();  // sync so splash_tick() doesn't immediately repick
     splash_pick_for_current_rate();
     if (splash_container) lv_obj_clear_flag(splash_container, LV_OBJ_FLAG_HIDDEN);
     active = true;

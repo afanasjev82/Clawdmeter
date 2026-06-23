@@ -64,8 +64,10 @@ static NimBLECharacteristic* req_char = nullptr;
 static ble_state_t state = BLE_STATE_INIT;
 static bool need_advertise = false;
 static char rx_buf[BLE_BUF_SIZE];
+static char rx_snap[BLE_BUF_SIZE];  // snapshot buffer owned by the loop task
 static volatile bool data_ready = false;
 static volatile bool has_received_data = false;
+static portMUX_TYPE rx_mux = portMUX_INITIALIZER_UNLOCKED;
 static char mac_str[18];
 
 static void start_advertising() {
@@ -127,9 +129,11 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr, NimBLEConnInfo& info) override {
         std::string val = chr->getValue();
         size_t len = std::min(val.length(), (size_t)(BLE_BUF_SIZE - 1));
+        portENTER_CRITICAL(&rx_mux);
         memcpy(rx_buf, val.c_str(), len);
         rx_buf[len] = '\0';
         data_ready = true;
+        portEXIT_CRITICAL(&rx_mux);
         has_received_data = true;
     }
 };
@@ -245,8 +249,11 @@ bool ble_has_data(void) {
 }
 
 const char* ble_get_data(void) {
+    portENTER_CRITICAL(&rx_mux);
+    memcpy(rx_snap, rx_buf, BLE_BUF_SIZE);
     data_ready = false;
-    return rx_buf;
+    portEXIT_CRITICAL(&rx_mux);
+    return rx_snap;
 }
 
 void ble_send_ack(void) {

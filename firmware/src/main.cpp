@@ -164,10 +164,7 @@ static void send_screenshot() {
 // paths so both render identically. Returns true on a successful parse.
 static bool apply_usage(const char* json) {
     if (!parse_json(json, &usage)) return false;
-    int g_before = usage_rate_group();
     usage_rate_sample(usage.session_pct);
-    int g_after = usage_rate_group();
-    if (g_after != g_before && splash_is_active()) splash_pick_for_current_rate();
     ui_update(&usage);
     return true;
 }
