@@ -37,7 +37,7 @@ and to avoid PR-negotiation overhead. Tier 4 stays private regardless of that ch
 - **`m5stack-core` = `main` + all our work (Tiers 1–4) + docs + this skill.** Everything
   lives and deploys from here.
 
-```
+```text
 upstream/main ──ff──▶ main ──merge──▶ m5stack-core ──▶ crazybot deployment
  (HermannBjorgvin)   (mirror)         (mirror + our 32 commits)
 ```
@@ -59,9 +59,13 @@ upstream/main ──ff──▶ main ──merge──▶ m5stack-core ──▶
 - **If the merge changed `firmware/src/` (shared or the m5stack board) or the m5stack env
   in `platformio.ini`:** flash crazybot and run the serial sanity check (`[boot]
   reset_reason`, `OK sleep`, `ACK`). Otherwise the m5stack binary is unchanged → **no reflash**.
-- **If it changed `daemon/`:** confirm `claude_usage_daemon_serial.py`'s imports from
-  `claude_usage_daemon.py` (`read_token`, `poll_api`, `log`, `POLL_INTERVAL`) still resolve;
-  redeploy + check `docker logs clawdmeter-daemon-serial` for `[dev]` + `ACK`.
+- **If it changed any daemon file bundled in the crazybot Docker image** (`claude_usage_daemon.py`,
+  `claude_usage_daemon_serial.py`, `token_refresher.py`, `Dockerfile`, `docker-compose.yml`,
+  `requirements-docker.txt`): **redeploy to crazybot** so its running code equals the repo — even
+  when the change looks behaviorally irrelevant to the serial path (keep-current policy). First
+  confirm `claude_usage_daemon_serial.py`'s imports from `claude_usage_daemon.py` (`read_token`,
+  `poll_api`, `log`, `POLL_INTERVAL`) still resolve; after redeploy check `docker logs
+  clawdmeter-daemon-serial` for `[dev]` + `ACK`.
 
 ## Conflict-minimization principle (ongoing)
 
@@ -78,6 +82,8 @@ M5Stack port in a separate `docs/` file over editing upstream's `CLAUDE.md`.
   its own identical `firmware/.gitignore`.
 - Merged 11 upstream commits → **one** conflict, in `daemon/claude_usage_daemon_windows.py`:
   both sides had independently set `DEVICE_NAME = "Clawdmeter"`. Kept our commented version.
-- All 11 upstream commits were BLE/Windows/macOS-daemon or C6-board work — **zero** impact on
-  the M5Stack firmware or our serial/Docker path. Firmware rebuilt clean; no reflash needed.
-- Result: `main` = `upstream/main` = `52b23c8`; `m5stack-core` = `8fddb99` (0 behind / 32 ahead).
+- All 11 upstream commits were BLE/Windows/macOS-daemon or C6-board work — **zero** functional
+  impact on the M5Stack firmware or our serial path. Firmware rebuilt clean; no reflash. We still
+  **redeployed the merged daemon to crazybot** (`claude_usage_daemon.py` is bundled in the image)
+  per the keep-current policy — verified healthy (`[dev] {"ready":true}`, `OK sleep=30`, `ACK`).
+- Result: `main` = `upstream/main` = `52b23c8`; `m5stack-core` pushed, 0 behind upstream.

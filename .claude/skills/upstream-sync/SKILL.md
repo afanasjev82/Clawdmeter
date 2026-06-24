@@ -68,8 +68,13 @@ code. Firmware conflicts are rare (upstream rarely touches shared firmware or ou
   `[env:m5stack_core]` section of `platformio.ini`:** the binary changed → flash + serial sanity
   (see Deployment). If it only touched another board (e.g. `boards/waveshare_*`) or a comment,
   the m5stack binary is unchanged → **no reflash**.
-- **If the merge changed `daemon/`:** confirm the serial daemon's imports still resolve, then
-  redeploy and check logs:
+- **If the merge changed any daemon file bundled in the crazybot image —
+  `claude_usage_daemon.py`, `claude_usage_daemon_serial.py`, `token_refresher.py`, `Dockerfile`,
+  `docker-compose.yml`, `requirements-docker.txt` — REDEPLOY to crazybot** (see Deployment).
+  Keep crazybot's running code identical to the repo; do not skip because a change "looks
+  irrelevant" to the serial path (e.g. the 2026-06-24 sync changed `claude_usage_daemon.py` with
+  only BLE/macOS edits, yet it is bundled in the image, so it redeploys). First confirm the serial
+  daemon's imports still resolve:
   ```bash
   for s in "def read_token" "def poll_api" "def log" "POLL_INTERVAL ="; do grep -q "$s" daemon/claude_usage_daemon.py || echo "MISSING: $s"; done
   ```
@@ -106,12 +111,29 @@ git push origin main --force-with-lease
 - Don't confuse "1 commit ahead of upstream" on GitHub with being behind — a stray commit on
   `origin/main` shows as ahead. Repair as above.
 
-## Deployment (our current host: crazybot, USB-serial + Docker)
+## Deployment (host: crazybot — M5Stack on USB, USB-serial + Docker)
 
-Only needed when a verification gate above says so. The M5Stack stays plugged into crazybot.
+**Redeploy to crazybot whenever a verification gate above fired** — i.e. the merge changed the
+m5stack binary or any file in crazybot's Docker image. The M5Stack stays plugged into crazybot;
+keep its running code identical to the repo. Push `m5stack-core` first (Deployment pulls from
+`origin`).
+
+### Daemon redeploy — any bundled daemon file changed
+Updating the checkout reopens the serial port → a brief clean ESP reset (`reset_reason=power-on`);
+the firmware binary is untouched.
 
 ```bash
-# build + ship firmware (only if the m5stack binary changed)
+# 1) sanity-check crazybot for unexpected local drift BEFORE resetting (review the diff)
+ssh afanasjev@crazybot 'cd ~/Clawdmeter && git fetch origin && git status --short && git diff --stat origin/m5stack-core -- daemon/'
+# 2) update checkout to merged code, then rebuild + restart.
+#    reset --hard preserves the gitignored, host-specific daemon/.env (e.g. SCREEN_SLEEP_SECONDS)
+ssh afanasjev@crazybot 'cd ~/Clawdmeter && git reset --hard origin/m5stack-core && cd daemon && ./stop.sh && ./start.sh -t usb -d'
+# 3) verify — expect [dev] {"ready":true}, OK sleep=NN, then Sending + [dev] ACK
+ssh afanasjev@crazybot 'sleep 12; docker logs --since 25s clawdmeter-daemon-serial'
+```
+
+### Firmware reflash — m5stack binary changed
+```bash
 pio run -d firmware -e m5stack_core
 scp firmware/.pio/build/m5stack_core/firmware.bin afanasjev@crazybot:/tmp/firmware.bin
 ssh afanasjev@crazybot 'cd ~/Clawdmeter/daemon && ./stop.sh && \
@@ -119,14 +141,6 @@ ssh afanasjev@crazybot 'cd ~/Clawdmeter/daemon && ./stop.sh && \
     --port /dev/serial/by-id/usb-Silicon_Labs_CP2104_USB_to_UART_Bridge_Controller_017059CD-if00-port0 \
     --baud 460800 write_flash 0x10000 /tmp/firmware.bin && \
   cd ~/Clawdmeter/daemon && ./start.sh -t usb -d'
-
 # serial sanity (expect [boot] reset_reason, OK sleep, ACK, [dev]-prefixed lines)
 ssh afanasjev@crazybot 'docker logs --since 30s clawdmeter-daemon-serial'
 ```
-
-To deploy *merged daemon* code to crazybot, update its checkout (`cd ~/Clawdmeter && git fetch
-origin && git checkout m5stack-core && git reset --hard origin/m5stack-core`) — but preserve its
-local `daemon/.env` (e.g. `SCREEN_SLEEP_SECONDS`), which is gitignored and host-specific — then
-`./start.sh -t usb -d`. Skip this when the merge brought no functional change for the
-serial/Docker path (as in the 2026-06-24 sync, where upstream's commits were all BLE/Windows/
-macOS-daemon or C6-board work).
