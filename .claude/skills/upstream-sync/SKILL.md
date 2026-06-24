@@ -21,30 +21,30 @@ This fork keeps M5Stack Core support private and periodically merges upstream in
 
 ## Procedure
 
-Run from the repo root. Substitute the device/host specifics under "Deployment" below.
+A full run does **two syncs**, in order: **Sync A** refreshes the mirror
+(`upstream/main → origin/main`); **Sync B** brings upstream into our work
+(`main → m5stack-core`). Run from the repo root; device/host specifics under "Deployment".
 
 ```bash
-# 1. Fetch both remotes; record a rollback point
+# 0. Fetch both remotes; record a rollback point; get onto our branch
 git fetch upstream && git fetch origin
 PRE=$(git rev-parse m5stack-core)          # rollback target
+git switch m5stack-core                     # so Sync A can move `main` without checking it out
+                                            # (git branch -f FAILS on a checked-out branch)
 
-# 2. Get onto our branch first, so step 3 can move `main` without checking it out
-#    (git branch -f FAILS on a branch that is currently checked out)
-git switch m5stack-core
+# ── SYNC A: upstream/main → origin/main  (refresh the pristine mirror) ──
+git branch -f main upstream/main           # fast-forward local main to upstream (no checkout)
+git push origin main --force-with-lease    # publish to the fork; only "forces" if main drifted, else plain
 
-# 3. Fast-forward the mirror (main) to upstream, publish it
-git branch -f main upstream/main           # move main without checkout (keeps your worktree)
-git push origin main --force-with-lease    # only "forces" if main had drifted; else a plain update
-
-# 4. Merge the mirror into our branch
+# ── SYNC B: main → m5stack-core  (merge upstream into our work) ──
 git merge --no-edit main
 ```
 
-If step 4 reports conflicts, resolve them (see "Conflicts"), `git add` each, then
+If Sync B reports conflicts, resolve them (see "Conflicts"), `git add` each, then
 `git commit --no-edit`. If it merges cleanly it auto-commits.
 
 ```bash
-# 5. What did the merge actually touch? (drives verification)
+# What did the merge actually touch? (drives verification + deployment)
 git diff --stat $PRE HEAD -- firmware/src firmware/platformio.ini   # firmware impact
 git diff --stat $PRE HEAD -- daemon                                  # daemon impact
 ```

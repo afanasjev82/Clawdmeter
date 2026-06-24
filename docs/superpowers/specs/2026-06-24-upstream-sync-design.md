@@ -19,7 +19,7 @@ canonical description of the topology the skill assumes.
 The work was analysed (diff `main`..`m5stack-core`, 38 files) and sorts into four tiers:
 
 | Tier | What | Upstream fit |
-|---|---|---|
+| --- | --- | --- |
 | 1. Board-isolated | `boards/m5stack_core/*`, `platformio.ini` env | clean |
 | 2. Small enablers the board requires | `has_touch` cap, touchless splash-toggle, 320×240 responsive breakpoint | additive |
 | 3. Generally-useful features | configurable screen sleep, USB-serial transport, BLE `rx_buf` race fix | separable |
@@ -45,8 +45,8 @@ upstream/main ──ff──▶ main ──merge──▶ m5stack-core ──▶
 ## Sync procedure (encoded in the skill)
 
 1. `git fetch upstream && git fetch origin`. Record `PRE=$(git rev-parse m5stack-core)`.
-2. Fast-forward the mirror: move `main` to `upstream/main`, push to `origin`.
-3. `git checkout m5stack-core && git merge --no-edit main`.
+2. **Sync A — `upstream/main → origin/main`:** fast-forward `main` to `upstream/main`, push to `origin` (refresh the mirror).
+3. **Sync B — `main → m5stack-core`:** `git switch m5stack-core && git merge --no-edit main`.
 4. Resolve conflicts. **`daemon/` is the hot zone** — upstream is most active there and we
    have private daemon code. Firmware conflict risk is low (upstream rarely touches the
    shared firmware or our board).
